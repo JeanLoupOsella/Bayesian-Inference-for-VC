@@ -94,19 +94,23 @@ In 2021, Angellist published a [report](https://www.angellist.com/blog/angellist
 
 For the transition priors (probability of going from the Seed stage to the Series A stage for instance), we can use data from CBInsights:
 
-	         2014 - Mid 2025	    Before 2014    	Total
-Seed	        189 750	             33 665	     223 415
-Series A	     60 077	             30 299	      90 376
-Series B	     27 312	             19 537	      46 849
-Series C	     12 329	              8 884	      21 213
-Series d+	      9 041	              6 725	      15 766
+
+| Funding Stage | 2014 - Mid 2025 | Before 2014 | Total |
+|---------------|----------------:|------------:|------:|
+| Seed          | 189,750         | 33,665      | 223,415 |
+| Series A      | 60,077          | 30,299      | 90,376 |
+| Series B      | 27,312          | 19,537      | 46,849 |
+| Series C      | 12,329          | 8,884       | 21,213 |
+| Series D+     | 9,041           | 6,725       | 15,766 |
 
 We can then use the following formula to get a very rough estimate of the transition probabilities (Number of deal between 2014 - 2025 at the next stage / Total deals current stage):
 
-Seed -     Series A	  27%
-Series A - Series B	  30%
-Series B - Series C	  26%
-Series C - Series D+	32%
+| Current Stage | Next Stage | Progression Rate |
+|---------------|------------|----------------:|
+| Seed          | Series A   | 27% |
+| Series A      | Series B   | 30% |
+| Series B      | Series C   | 26% |
+| Series C      | Series D+  | 32% |
 
 Those probabilities are probably overestimated but it does not matter because they are just rough priors that will get quickly replaced with more relevant data fitting each individual investor.
 
