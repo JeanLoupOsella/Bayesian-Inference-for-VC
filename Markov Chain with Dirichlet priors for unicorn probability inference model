@@ -1,0 +1,265 @@
+# Load required libraries
+library(dplyr)
+library(gtools)  # For the rdirichlet function
+
+# Define the transition probabilities (prior means)
+transition_means <- list(
+  Seed = c(NextStage = 0.27, Bankrupt = 0.50, Operating = 0.22, Unicorn = 0.01),
+  SeriesA = c(NextStage = 0.30, Bankrupt = 0.50, Operating = 0.19, Unicorn = 0.01),
+  SeriesB = c(NextStage = 0.26, Bankrupt = 0.29, Operating = 0.43, Unicorn = 0.02),
+  SeriesC = c(NextStage = 0.32, Bankrupt = 0.25, Operating = 0.38, Unicorn = 0.05),
+  Final = c(Bankrupt = 0.20, Zombie = 0.75, Unicorn = 0.05)
+)
+
+# Define concentration parameters for Dirichlet - higher values = more certainty
+# For each stage, how confident are we in the transition probabilities?
+concentration_factors <- list(
+  Seed = 20,      # Moderate confidence
+  SeriesA = 20,   # Moderate confidence
+  SeriesB = 20,   # Moderate confidence
+  SeriesC = 20,   # Moderate confidence
+  Final = 20      # Moderate confidence
+)
+
+# Function to sample from Dirichlet distribution based on mean probabilities and concentration
+generate_transition_matrix <- function(means, concentration_factor) {
+  # Convert means to Dirichlet parameters by multiplying by concentration factor
+  alpha_params <- means * concentration_factor
+  # Sample from Dirichlet distribution
+  probs <- as.vector(rdirichlet(1, alpha_params))
+  names(probs) <- names(means)
+  return(probs)
+}
+
+# Function to generate a set of transition matrices for a single simulation run
+generate_transition_matrices <- function(means, concentration_factors) {
+  matrices <- list()
+  for (stage in names(means)) {
+    matrices[[stage]] <- generate_transition_matrix(means[[stage]], concentration_factors[[stage]])
+  }
+  return(matrices)
+}
+
+# Function to sample a transition based on current stage
+sample_transition <- function(stage, probs) {
+  outcome <- sample(names(probs), 1, prob = probs)
+  return(outcome)
+}
+
+# Function to simulate a single startup's trajectory
+simulate_startup <- function(means, concentration_factors) {
+  # Generate unique transition matrices for this startup
+  transition_probs <- generate_transition_matrices(means, concentration_factors)
+  
+  stage <- "Seed"
+  history <- c(stage)
+  
+  for (t in 1:10) {
+    if (stage %in% c("Bankrupt", "Unicorn", "Zombie")) {
+      break
+    }
+    
+    # At t = 10, special final transition
+    if (t == 10) {
+      final_outcome <- sample_transition("Final", transition_probs$Final)
+      stage <- final_outcome
+      history <- c(history, stage)
+      break
+    }
+    
+    current_probs <- transition_probs[[stage]]
+    result <- sample_transition(stage, current_probs)
+    
+    if (result == "NextStage") {
+      # Advance stage
+      if (stage == "Seed") stage <- "SeriesA"
+      else if (stage == "SeriesA") stage <- "SeriesB"
+      else if (stage == "SeriesB") stage <- "SeriesC"
+      else if (stage == "SeriesC") stage <- "SeriesC"  # stays at Series C
+    } else if (result == "Operating") {
+      # Stay at the same stage
+      stage <- stage
+    } else {
+      # Transition to absorbing state
+      stage <- result
+      history <- c(history, stage)
+      break
+    }
+    
+    history <- c(history, stage)
+  }
+  
+  return(list(final_state = stage, trajectory = history))
+}
+
+# Main simulation function
+simulate_investments <- function(n_investments = 10000, show_trajectories = FALSE) {
+  set.seed(123)
+  outcomes <- c()
+  trajectories <- list()
+  
+  for (investment in 1:n_investments) {
+    result <- simulate_startup(transition_means, concentration_factors)
+    outcomes <- c(outcomes, result$final_state)
+    trajectories[[investment]] <- result$trajectory
+    
+    # Show progress every 1000 simulations
+    if (investment %% 1000 == 0) {
+      cat("Completed", investment, "simulations\n")
+    }
+  }
+  
+  # Calculate proportions
+  total <- length(outcomes)
+  summary <- table(outcomes)
+  summary_percent <- round(100 * summary / total, 2)
+  
+  cat("\nOutcome summary after", n_investments, "investments:\n")
+  print(summary)
+  cat("\nOutcome percentages:\n")
+  print(summary_percent)
+  
+  cat("\nProbability of becoming a unicorn after 10 years:", summary_percent["Unicorn"], "%\n")
+  
+  # Calculate confidence intervals using bootstrapping
+  calculate_ci <- function(outcomes, outcome_type, confidence = 0.95) {
+    bootstrap_samples <- 1000
+    bootstrap_proportions <- numeric(bootstrap_samples)
+    
+    for (i in 1:bootstrap_samples) {
+      sample_outcomes <- sample(outcomes, length(outcomes), replace = TRUE)
+      bootstrap_proportions[i] <- mean(sample_outcomes == outcome_type)
+    }
+    
+    ci_lower <- quantile(bootstrap_proportions, (1 - confidence) / 2)
+    ci_upper <- quantile(bootstrap_proportions, 1 - (1 - confidence) / 2)
+    
+    return(c(ci_lower, ci_upper))
+  }
+  
+  # Calculate 95% confidence intervals for unicorn outcome
+  unicorn_ci <- calculate_ci(outcomes, "Unicorn")
+  cat("\n95% Confidence interval for unicorn probability:", 
+      round(100 * unicorn_ci[1], 2), "% to", 
+      round(100 * unicorn_ci[2], 2), "%\n")
+  
+  # Optionally display some example trajectories
+  if (show_trajectories) {
+    cat("\nSample trajectories (first 5):\n")
+    for (i in 1:min(5, length(trajectories))) {
+      cat("Startup", i, ":", paste(trajectories[[i]], collapse = " -> "), "\n")
+    }
+  }
+  
+  return(list(summary = summary, trajectories = trajectories))
+}
+
+# Function to analyze sensitivity to concentration parameters
+analyze_sensitivity <- function(concentration_ranges = seq(5, 50, by = 5)) {
+  unicorn_probabilities <- numeric(length(concentration_ranges))
+  
+  for (i in seq_along(concentration_ranges)) {
+    # Set all concentration factors to the same value
+    test_concentration <- concentration_ranges[i]
+    test_factors <- list(
+      Seed = test_concentration,
+      SeriesA = test_concentration,
+      SeriesB = test_concentration,
+      SeriesC = test_concentration,
+      Final = test_concentration
+    )
+    
+    # Run smaller simulation for each concentration level
+    cat("Testing concentration factor:", test_concentration, "\n")
+    outcomes <- c()
+    for (investment in 1:2000) {
+      result <- simulate_startup(transition_means, test_factors)
+      outcomes <- c(outcomes, result$final_state)
+    }
+    
+    unicorn_probabilities[i] <- mean(outcomes == "Unicorn")
+  }
+  
+  # Return results
+  result <- data.frame(
+    concentration = concentration_ranges,
+    unicorn_probability = unicorn_probabilities
+  )
+  
+  cat("\nSensitivity analysis results:\n")
+  print(result)
+  
+  return(result)
+}
+
+# Run the simulation
+result <- simulate_investments(n_investments = 10000, show_trajectories = TRUE)
+
+# Run sensitivity analysis
+sensitivity <- analyze_sensitivity()
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+##### Results
+
+Outcome summary after 10000 investments:
+outcomes
+Bankrupt  Unicorn   Zombie 
+    9582      293      125 
+
+Outcome percentages:
+outcomes
+Bankrupt  Unicorn   Zombie 
+   95.82     2.93     1.25 
+
+Probability of becoming a unicorn after 10 years: 2.93 %
+
+95% Confidence interval for unicorn probability: 2.58 % to 3.27 %
+
+Sample trajectories (first 5):
+Startup 1 : Seed -> Bankrupt 
+Startup 2 : Seed -> Bankrupt 
+Startup 3 : Seed -> Bankrupt 
+Startup 4 : Seed -> SeriesA -> Bankrupt 
+Startup 5 : Seed -> Seed -> SeriesA -> SeriesA -> Bankrupt 
+
+| Concentration Parameter | Unicorn Probability |
+|------------------------:|--------------------:|
+| 5                       | 0.0285 (2.85%)      |
+| 10                      | 0.0300 (3.00%)      |
+| 15                      | 0.0290 (2.90%)      |
+| 20                      | 0.0270 (2.70%)      |
+| 25                      | 0.0275 (2.75%)      |
+| 30                      | 0.0280 (2.80%)      |
+| 35                      | 0.0290 (2.90%)      |
+| 40                      | 0.0305 (3.05%)      |
+| 45                      | 0.0260 (2.60%)      |
+| 50                      | 0.0340 (3.40%)      |
+
+*Note: This table shows how different concentration parameters in the Dirichlet distribution affect the probability of a startup reaching unicorn status in the simulation. Higher concentration values indicate stronger prior beliefs (less uncertainty).*
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+#### Function to update the priors
+
+
+# Function to update priors using Dirichlet updating
+update_priors <- function(prior_probs, observed_counts) {
+  prior_counts <- prior_probs * 100  # Assume 100 pseudo-counts initially
+  updated_counts <- prior_counts + observed_counts
+  updated_probs <- updated_counts / sum(updated_counts)
+  return(updated_probs)
+}
+
+# Example initial prior for Seed stage
+prior_seed <- c(NextStage = 0.27, Bankrupt = 0.50, Operating = 0.22, Unicorn = 0.01)
+
+# observed counts
+# 2 Series A raised (NextStage), 8 still Operating, 0 Bankrupt, 0 Unicorn
+observed_counts <- c(NextStage = 2, Bankrupt = 0, Operating = 8, Unicorn = 0)
+
+# Update priors
+new_seed_priors <- update_priors(prior_seed, observed_counts)
+
+print(new_seed_priors)
+
+  NextStage    Bankrupt   Operating     Unicorn 
+0.263636364 0.454545455 0.272727273 0.009090909 
