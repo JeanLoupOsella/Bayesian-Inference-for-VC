@@ -115,3 +115,5 @@ We can then use the following formula to get a very rough estimate of the transi
 Those probabilities are probably overestimated but it does not matter because they are just rough priors that will get quickly replaced with more relevant data fitting each individual investor.
 
 For the rest of the priors, we can just assume that the probability of becoming a unicorn will always be close to 1%, only getting slightly higher at the Series C stage, and for the other two, we can just "guesstimate" to reach 1. 
+
+Overall, those priors were just examples on how to start from a frequentist approach, and use a bayesian approach to refine the probabilities as new information becomes available. Each investor can use a more fitting approach to their personal case to get better priors.
